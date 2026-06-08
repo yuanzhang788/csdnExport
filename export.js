@@ -15,11 +15,11 @@ tags:
 `;
 }
 
-// 获取所有文章ID
+// 获取所有文章ID和发布时间
 async function getArticleIds(page) {
     console.log('正在获取文章列表...');
     
-    const articleIds = [];
+    const articleIds = []; // 存储 {id, pubDate} 对象
     let pageNum = 1;
     let hasMore = true;
 
@@ -37,32 +37,55 @@ async function getArticleIds(page) {
         // 等待一下确保内容完全加载
         await new Promise(resolve => setTimeout(resolve, 2000));
 
-        // 提取文章ID
-        const ids = await page.evaluate(() => {
-            const links = document.querySelectorAll('div.article-item-box h4 a');
-            const ids = [];
-            links.forEach(link => {
-                const href = link.getAttribute('href');
-                if (href) {
-                    const match = href.match(/article\/details\/(\d+)/);
-                    if (match) {
-                        ids.push(match[1]);
-                    }
+        // 提取文章ID和发布时间
+        const articles = await page.evaluate(() => {
+            const items = document.querySelectorAll('div.article-item-box');
+            const articles = [];
+            
+            items.forEach(item => {
+                // 获取文章链接和ID
+                const linkEl = item.querySelector('h4 a');
+                if (!linkEl) return;
+                
+                const href = linkEl.getAttribute('href');
+                if (!href) return;
+                
+                const match = href.match(/article\/details\/(\d+)/);
+                if (!match) return;
+                
+                const id = match[1];
+                
+                // 获取发布时间 - 从 .info-box .date 获取
+                let pubDate = '';
+                const dateEl = item.querySelector('.info-box .date');
+                
+                if (dateEl) {
+                    pubDate = dateEl.textContent.trim();
                 }
+                
+                articles.push({ id, pubDate });
             });
-            return [...new Set(ids)]; // 去重
+            
+            // 去重
+            const seen = new Set();
+            return articles.filter(article => {
+                if (seen.has(article.id)) return false;
+                seen.add(article.id);
+                return true;
+            });
         });
 
-        console.log(`第 ${pageNum} 页获取到 ${ids.length} 篇文章`);
+        console.log(`第 ${pageNum} 页获取到 ${articles.length} 篇文章`);
         
-        if (ids.length === 0) {
+        if (articles.length === 0) {
             hasMore = false;
             console.log('没有更多文章了');
         } else {
-            // 添加新的文章ID(避免重复)
-            ids.forEach(id => {
-                if (!articleIds.includes(id)) {
-                    articleIds.push(id);
+            // 添加新的文章(避免重复)
+            articles.forEach(article => {
+                const exists = articleIds.find(a => a.id === article.id);
+                if (!exists) {
+                    articleIds.push(article);
                 }
             });
             
@@ -98,7 +121,7 @@ async function getArticleIds(page) {
     }
 
     console.log(`总共获取到 ${articleIds.length} 篇文章`);
-    return articleIds;
+    return articleIds; // 返回包含 id 和 pubDate 的对象数组
 }
 
 // 扫码登录
@@ -239,7 +262,7 @@ async function getArticleDetail(page, articleId) {
             return {
                 title: metaInfo.title,
                 markdown: articleData.markdown,
-                pubDate: new Date().toISOString()
+                pubDate: null // 不在这里设置时间，使用列表页的时间
             };
         } else {
             console.error(`文章 ${articleId} 未能从页面提取到内容`);
@@ -269,12 +292,11 @@ async function getArticleDetail(page, articleId) {
 }
 
 // 保存文章为md文件
-async function saveArticle(article, index) {
+async function saveArticle(article, index, listPubDate) {
     if (!article) return;
     
-    // 格式化日期
-    const date = new Date(article.pubDate);
-    const formattedDate = date.toISOString().replace('T', ' ').substring(0, 19);
+    // 使用列表页获取的发布时间（已经是 YYYY-MM-DD HH:mm:ss 格式）
+    const formattedDate = listPubDate || new Date().toISOString().replace('T', ' ').substring(0, 19);
     
     // 生成文件名(去除非法字符)
     const safeTitle = article.title.replace(/[\\/:*?"<>|]/g, '_').trim();
@@ -286,7 +308,7 @@ async function saveArticle(article, index) {
     
     // 保存文件
     await fs.writeFile(filepath, content, 'utf-8');
-    console.log(`[${index + 1}] 已保存: ${filename}`);
+    console.log(`[${index + 1}] 已保存: ${filename} (发布时间: ${formattedDate})`);
 }
 
 // 主函数
@@ -327,11 +349,13 @@ async function main() {
         
         // 逐个获取文章详情并保存
         for (let i = 0; i < articleIds.length; i++) {
-            const articleId = articleIds[i];
-            console.log(`正在处理第 ${i + 1}/${articleIds.length} 篇文章 (ID: ${articleId})...`);
+            const articleInfo = articleIds[i];
+            console.log(`正在处理第 ${i + 1}/${articleIds.length} 篇文章 (ID: ${articleInfo.id})...`);
             
-            const article = await getArticleDetail(page, articleId);
-            await saveArticle(article, i);
+            const article = await getArticleDetail(page, articleInfo.id);
+            
+            // 传递列表页获取的发布时间
+            await saveArticle(article, i, articleInfo.pubDate);
             
             // 延迟避免请求过快
             if (i < articleIds.length - 1) {
