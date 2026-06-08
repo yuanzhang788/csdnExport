@@ -9,8 +9,8 @@
 - **Front-matter 生成** — 自动注入 `title`、`date`、`tags` 等元信息，兼容 Hexo / Hugo / VuePress
 - **图片本地化** — PowerShell 脚本批量下载文章中的远程图片，并替换为本地相对路径
 
-![](/assets/CSDN/1780889307677-75e92ff7-6c0b-489b-b9ae-92bc6ff374aa.png)
-![](/assets/CSDN/Snipaste_2026-06-08_16-36-06.png)
+![](./assets/CSDN/1780889307677-75e92ff7-6c0b-489b-b9ae-92bc6ff374aa.png)
+![](./assets/CSDN/Snipaste_2026-06-08_16-36-06.png)
 
 ## 项目结构
 
